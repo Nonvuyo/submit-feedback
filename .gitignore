@@ -1,4 +1,9 @@
-﻿# Dependencies
+﻿# Firebase
+.firebaserc
+firebase.json
+functions/
+public/
+# Dependencies
 node_modules/
 */node_modules/
 # Database
