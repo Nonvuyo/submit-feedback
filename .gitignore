@@ -1,5 +1,6 @@
 ﻿# Dependencies
 node_modules/
+*/node_modules/
 # Database
 *.db
 *.sqlite
