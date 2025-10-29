@@ -10,7 +10,10 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const API_BASE = 'http://localhost:5000/api';
+  // Use production backend URL for deployed app, localhost for development
+  const API_BASE = process.env.NODE_ENV === 'production' 
+    ? 'https://feedback-backend.onrender.com/api'
+    : 'http://localhost:5000/api';
 
   const fetchFeedback = async () => {
     try {
@@ -27,7 +30,7 @@ function App() {
       setFeedback(data);
     } catch (error) {
       console.error('❌ Fetch error:', error);
-      setError('Cannot connect to server. Make sure backend is running on port 5000.');
+      setError('Cannot connect to server. Please check if the backend is running.');
     }
   };
 
@@ -75,9 +78,27 @@ function App() {
     }
   };
 
-  const handleFeedbackDelete = async () => {
-    // Refresh feedback list after delete
-    await fetchFeedback();
+  const handleFeedbackDelete = async (feedbackId) => {
+    try {
+      console.log('🟡 Deleting feedback with ID:', feedbackId);
+      
+      const response = await fetch(`${API_BASE}/feedback/${feedbackId}`, {
+        method: 'DELETE',
+      });
+
+      const result = await response.json();
+      console.log('🟡 Delete response:', result);
+
+      if (response.ok) {
+        alert('✅ Feedback deleted successfully!');
+        await fetchFeedback(); // Refresh the list
+      } else {
+        throw new Error(result.error || 'Failed to delete feedback');
+      }
+    } catch (error) {
+      console.error('❌ Delete error:', error);
+      alert(`❌ Error: ${error.message}`);
+    }
   };
 
   return (
