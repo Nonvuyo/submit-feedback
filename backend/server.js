@@ -1,160 +1,107 @@
-require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const bodyParser = require('body-parser');
-const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Improved CORS configuration
+// CORS for production
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://your-frontend-url.vercel.app' // Update with your Vercel URL
+];
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-  methods: ['GET', 'POST', 'DELETE'],
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true
 }));
 
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// Database setup with environment variable
-const dbPath = path.join(__dirname, process.env.DB_PATH || 'feedback.db');
-const db = new sqlite3.Database(dbPath, (err) => {
-  if (err) {
-    console.error('Error opening database:', err.message);
-  } else {
-    console.log('Connected to SQLite database at:', dbPath);
-    db.run(`CREATE TABLE IF NOT EXISTS Feedback (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      studentName TEXT NOT NULL,
-      courseCode TEXT NOT NULL,
-      comments TEXT NOT NULL,
-      rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
-      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`, (err) => {
-      if (err) {
-        console.error('Error creating table:', err.message);
-      } else {
-        console.log('Feedback table ready.');
-      }
-    });
-  }
-});
+// Use in-memory storage for Render (no SQLite)
+let feedbackData = [];
+let nextId = 1;
 
-// Test route
+// Health check
 app.get('/', (req, res) => {
   res.json({ 
     message: 'Student Feedback API is running!',
-    environment: process.env.NODE_ENV || 'development',
-    endpoints: {
-      'GET /api/feedback': 'Get all feedback',
-      'POST /api/feedback': 'Submit new feedback',
-      'DELETE /api/feedback/:id': 'Delete feedback by ID'
-    }
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 
 // GET all feedback
 app.get('/api/feedback', (req, res) => {
-  console.log('GET /api/feedback requested');
-  const sql = `SELECT * FROM Feedback ORDER BY createdAt DESC`;
-  
-  db.all(sql, [], (err, rows) => {
-    if (err) {
-      console.error('Error fetching feedback:', err);
-      return res.status(500).json({ error: 'Failed to fetch feedback' });
-    }
-    console.log(`Returning ${rows.length} feedback items`);
-    res.json(rows);
-  });
+  try {
+    // Return feedback sorted by newest first
+    const sortedFeedback = [...feedbackData].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    res.json(sortedFeedback);
+  } catch (error) {
+    console.error('Error fetching feedback:', error);
+    res.status(500).json({ error: 'Failed to fetch feedback' });
+  }
 });
 
 // POST new feedback
 app.post('/api/feedback', (req, res) => {
-  console.log('POST /api/feedback received:', req.body);
-  
   try {
     const { studentName, courseCode, comments, rating } = req.body;
 
-    // Enhanced validation with detailed messages
+    // Validation
     if (!studentName?.trim() || !courseCode?.trim() || !comments?.trim() || !rating) {
-      return res.status(400).json({ 
-        error: 'All fields are required',
-        details: {
-          studentName: !studentName?.trim() ? 'Student name is required' : null,
-          courseCode: !courseCode?.trim() ? 'Course code is required' : null,
-          comments: !comments?.trim() ? 'Comments are required' : null,
-          rating: !rating ? 'Rating is required' : null
-        }
-      });
+      return res.status(400).json({ error: 'All fields are required' });
     }
 
     if (rating < 1 || rating > 5) {
-      return res.status(400).json({ 
-        error: 'Rating must be between 1 and 5',
-        received: rating 
-      });
+      return res.status(400).json({ error: 'Rating must be between 1 and 5' });
     }
 
     if (comments.trim().length < 10) {
-      return res.status(400).json({ 
-        error: 'Comments must be at least 10 characters long',
-        currentLength: comments.trim().length 
-      });
+      return res.status(400).json({ error: 'Comments must be at least 10 characters long' });
     }
 
-    if (studentName.trim().length < 2) {
-      return res.status(400).json({ 
-        error: 'Student name must be at least 2 characters long'
-      });
-    }
+    const newFeedback = {
+      id: nextId++,
+      studentName: studentName.trim(),
+      courseCode: courseCode.trim().toUpperCase(),
+      comments: comments.trim(),
+      rating: parseInt(rating),
+      createdAt: new Date().toISOString()
+    };
 
-    const sql = `INSERT INTO Feedback (studentName, courseCode, comments, rating) 
-                 VALUES (?, ?, ?, ?)`;
+    feedbackData.push(newFeedback);
     
-    db.run(sql, [studentName.trim(), courseCode.trim(), comments.trim(), parseInt(rating)], function(err) {
-      if (err) {
-        console.error('Database error:', err);
-        return res.status(500).json({ error: 'Failed to create feedback' });
-      }
-      console.log('Feedback created with ID:', this.lastID);
-      res.status(201).json({ 
-        message: 'Feedback submitted successfully', 
-        id: this.lastID,
-        feedback: {
-          id: this.lastID,
-          studentName: studentName.trim(),
-          courseCode: courseCode.trim(),
-          comments: comments.trim(),
-          rating: parseInt(rating)
-        }
-      });
+    console.log('New feedback submitted:', newFeedback);
+    res.status(201).json({ 
+      message: 'Feedback submitted successfully', 
+      id: newFeedback.id,
+      feedback: newFeedback
     });
   } catch (error) {
-    console.error('Server error:', error);
-    res.status(500).json({ error: 'Internal server error: ' + error.message });
+    console.error('Error creating feedback:', error);
+    res.status(500).json({ error: 'Failed to create feedback' });
   }
 });
 
 // DELETE feedback
 app.delete('/api/feedback/:id', (req, res) => {
-  const feedbackId = parseInt(req.params.id);
-  console.log('DELETE /api/feedback requested for ID:', feedbackId);
-
-  if (!feedbackId || isNaN(feedbackId)) {
-    return res.status(400).json({ error: 'Valid feedback ID is required' });
-  }
-
-  const sql = `DELETE FROM Feedback WHERE id = ?`;
-  
-  db.run(sql, [feedbackId], function(err) {
-    if (err) {
-      console.error('Error deleting feedback:', err);
-      return res.status(500).json({ error: 'Failed to delete feedback' });
+  try {
+    const feedbackId = parseInt(req.params.id);
+    
+    if (!feedbackId) {
+      return res.status(400).json({ error: 'Valid feedback ID is required' });
     }
 
-    if (this.changes === 0) {
+    const initialLength = feedbackData.length;
+    feedbackData = feedbackData.filter(item => item.id !== feedbackId);
+    
+    if (feedbackData.length === initialLength) {
       return res.status(404).json({ error: 'Feedback not found' });
     }
 
@@ -163,13 +110,43 @@ app.delete('/api/feedback/:id', (req, res) => {
       message: 'Feedback deleted successfully',
       deletedId: feedbackId
     });
-  });
+  } catch (error) {
+    console.error('Error deleting feedback:', error);
+    res.status(500).json({ error: 'Failed to delete feedback' });
+  }
 });
 
-// Start server
+// Add some sample data for demo
+if (process.env.NODE_ENV === 'production') {
+  feedbackData = [
+    {
+      id: nextId++,
+      studentName: 'John Doe',
+      courseCode: 'BIWA2110',
+      comments: 'Great course with excellent content and knowledgeable instructor!',
+      rating: 5,
+      createdAt: new Date('2024-01-15').toISOString()
+    },
+    {
+      id: nextId++,
+      studentName: 'Jane Smith',
+      courseCode: 'COMP101',
+      comments: 'Good material but could use more practical examples and exercises.',
+      rating: 4,
+      createdAt: new Date('2024-01-14').toISOString()
+    },
+    {
+      id: nextId++,
+      studentName: 'Mike Johnson',
+      courseCode: 'BIWA2110',
+      comments: 'The instructor was very knowledgeable and the course content was well structured.',
+      rating: 5,
+      createdAt: new Date('2024-01-13').toISOString()
+    }
+  ];
+}
+
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`📊 Database: ${dbPath}`);
+  console.log(`🚀 Server running on port ${PORT}`);
   console.log(`✅ Backend is ready!`);
 });
