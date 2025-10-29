@@ -4,20 +4,10 @@ const cors = require('cors');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// CORS for production
-const allowedOrigins = [
-  'http://localhost:3000',
-  'https://your-frontend-url.vercel.app' // Update with your Vercel URL
-];
-
+// CORS configuration - allow all origins for now
 app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: "*",  // Allow all origins
+  methods: ["GET", "POST", "DELETE", "OPTIONS"],
   credentials: true
 }));
 
