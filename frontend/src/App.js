@@ -10,10 +10,8 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Use production backend URL for deployed app, localhost for development
-  const API_BASE = process.env.NODE_ENV === 'production' 
-    ? 'https://feedback-backend.onrender.com/api'
-    : 'http://localhost:5000/api';
+  // Use the working backend URL
+  const API_BASE = 'https://submit-feedback-1.onrender.com/api';
 
   const fetchFeedback = async () => {
     try {
